@@ -20,6 +20,7 @@ class WC_Gateway_AppyPay extends WC_Payment_Gateway {
         $this->init_form_fields();
         $this->init_settings();
 
+        $this->merchant_name = $this->get_option('merchant_name');
         $this->title = $this->get_option('title');
         $this->description = $this->get_option('description');
         $this->enabled = $this->get_option('enabled');
@@ -40,6 +41,12 @@ class WC_Gateway_AppyPay extends WC_Payment_Gateway {
                 'type' => 'checkbox',
                 'label' => 'Ativar MCX EXPRESS',
                 'default' => 'yes'
+            ),
+            'merchant_name' => array(
+                'title' => 'Nome de Comerciante',
+                'type' => 'text',
+                'description' => 'Nome de Comerciante que o cliente verá durante o checkout, fornecido pela EMIS',
+                'default' => '',
             ),
             'title' => array(
                 'title' => 'Título',
@@ -137,8 +144,10 @@ class WC_Gateway_AppyPay extends WC_Payment_Gateway {
         echo '<fieldset id="wc-' . esc_attr($this->id) . '-form" class="wc-payment-form">';
         
         echo '<div class="form-row form-row-wide">
+            <label for="appypay-merchant">Nome do Comerciante</label>    
+            <h3 class="merchant-name">' . esc_html($this->merchant_name) . '</h3>
             <label for="appypay-phone">Número de Telefone <span class="required">*</span></label>
-            <input id="appypay-phone" name="appypay_phone" type="tel" autocomplete="off" placeholder="+244 900 000 000" required>
+            <input id="appypay-phone" name="appypay_phone" type="tel" autocomplete="off" placeholder="900 000 000" required>
         </div>';
         
         echo '</fieldset>';
