@@ -12,7 +12,7 @@ class WC_Gateway_AppyPay extends WC_Payment_Gateway {
 
     public function __construct() {
         $this->id = 'appypay_mcx_express';
-        $this->icon = plugins_url('assets/images/mcx_express.png', __FILE__);
+        $this->icon = plugins_url('../assets/images/mcx_express.png', __FILE__);
         $this->has_fields = true;
         $this->method_title = 'AppyPay MCX EXPRESS';
         $this->method_description = 'Pague via MCX EXPRESS';
@@ -105,7 +105,7 @@ class WC_Gateway_AppyPay extends WC_Payment_Gateway {
                 'title'       => 'Segredo do Webhook',
                 'type'        => 'password',
                 'description' => 'Chave secreta para validar as requisições do webhook'
-            )
+            ),
         );
     }
 
@@ -116,7 +116,7 @@ class WC_Gateway_AppyPay extends WC_Payment_Gateway {
 
         wp_enqueue_script(
             'woocommerce_appypay',
-            plugins_url('assets/js/appypay.js', dirname(__FILE__)),
+            plugins_url('../assets/js/appypay.js', __FILE__),
             array('jquery'),
             WC_VERSION,
             true
