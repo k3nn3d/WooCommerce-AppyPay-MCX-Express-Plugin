@@ -12,7 +12,7 @@ class WC_Gateway_AppyPay extends WC_Payment_Gateway {
 
     public function __construct() {
         $this->id = 'appypay_mcx_express';
-        $this->icon = plugins_url('../assets/images/mcx_express.png', __FILE__);
+        $this->icon = plugins_url('assets/images/mcx_express.png', dirname(__FILE__));
         $this->has_fields = true;
         $this->method_title = 'AppyPay MCX EXPRESS';
         $this->method_description = 'Pague via MCX EXPRESS';
@@ -20,10 +20,10 @@ class WC_Gateway_AppyPay extends WC_Payment_Gateway {
         $this->init_form_fields();
         $this->init_settings();
 
-        $this->merchant_name = $this->get_option('merchant_name');
         $this->title = $this->get_option('title');
         $this->description = $this->get_option('description');
         $this->enabled = $this->get_option('enabled');
+        $this->merchant_name = $this->get_option('merchant_name');
         $this->client_id = $this->get_option('client_id');
         $this->api_key = $this->get_option('api_key');
         $this->client_secret = $this->get_option('client_secret');
@@ -43,10 +43,10 @@ class WC_Gateway_AppyPay extends WC_Payment_Gateway {
                 'default' => 'yes'
             ),
             'merchant_name' => array(
-                'title' => 'Nome de Comerciante',
+                'title' => 'Nome do Comerciante',
                 'type' => 'text',
-                'description' => 'Nome de Comerciante que o cliente verá durante o checkout, fornecido pela EMIS',
-                'default' => '',
+                'description' => 'Nome que aparecerá durante o checkout',
+                'default' => ''
             ),
             'title' => array(
                 'title' => 'Título',
@@ -88,7 +88,7 @@ class WC_Gateway_AppyPay extends WC_Payment_Gateway {
             'grant_type' => array(
                 'title' => 'Grant Type',
                 'type' => 'text',
-                'description' => 'Tipo de concexão para autenticação.',
+                'description' => 'Tipo de conexão para autenticação.',
                 'default' => 'client_credentials',
             ),
             'webhook_section' => array(
@@ -112,7 +112,7 @@ class WC_Gateway_AppyPay extends WC_Payment_Gateway {
                 'title'       => 'Segredo do Webhook',
                 'type'        => 'password',
                 'description' => 'Chave secreta para validar as requisições do webhook'
-            ),
+            )
         );
     }
 
@@ -123,7 +123,7 @@ class WC_Gateway_AppyPay extends WC_Payment_Gateway {
 
         wp_enqueue_script(
             'woocommerce_appypay',
-            plugins_url('../assets/js/appypay.js', __FILE__),
+            plugins_url('assets/js/appypay.js', dirname(__FILE__)),
             array('jquery'),
             WC_VERSION,
             true
@@ -145,9 +145,9 @@ class WC_Gateway_AppyPay extends WC_Payment_Gateway {
         
         echo '<div class="form-row form-row-wide">
             <label for="appypay-merchant">Nome do Comerciante</label>    
-            <h3 class="merchant-name">' . esc_html($this->merchant_name) . '</h3>
+            <h5 class="merchant-name">' . esc_html($this->merchant_name) . '</h5>
             <label for="appypay-phone">Número de Telefone <span class="required">*</span></label>
-            <input id="appypay-phone" name="appypay_phone" type="tel" autocomplete="off" placeholder="900 000 000" required>
+            <input id="appypay-phone" name="appypay_phone" type="tel" autocomplete="off" placeholder="+244 900 000 000" required>
         </div>';
         
         echo '</fieldset>';
@@ -190,6 +190,16 @@ class WC_Gateway_AppyPay extends WC_Payment_Gateway {
         return false;
     }
 
+    private function generate_unique_transaction_id($order_id) {
+        $prefix = 'WC'; 
+        $order_part = substr(preg_replace('/[^0-9]/', '', $order_id), 0, 5); // 5 chars (pedido)
+        $datetime = (new DateTime())->format('ymdHis');
+    
+        $transaction_id = $prefix . $order_part . $datetime;
+        
+        return substr($transaction_id, 0, 15);
+    }
+
     public function process_payment($order_id) {
         global $woocommerce;
         $order = wc_get_order($order_id);
@@ -205,30 +215,43 @@ class WC_Gateway_AppyPay extends WC_Payment_Gateway {
             wc_add_notice(__('Erro ao conectar com o gateway de pagamento. Por favor, tente novamente.', 'woocommerce-gateway-appypay'), 'error');
             return false;
         }
+        $webhook_enabled = $this->get_option('webhook_enabled') === 'yes';
+    
+        $headers = array(
+            'Content-Type' => 'application/json',
+            'Authorization' => 'Bearer ' . $access_token
+        );
+        
+        // Adiciona header específico apenas se webhook estiver ativo
+        if ($webhook_enabled) {
+            $headers['Accept'] = 'application/vnd.appypay.asyncapi+json';
+            $headers['X-AppyPay-Callback'] = 'true';
+        } else {
+            $headers['Accept'] = 'application/json';
+        }
+
+        $payload = array(
+            'amount' => $order->get_total(),
+            'currency' => 'AOA',
+            'description' => 'Pedido ' . $order_id,
+            'merchantTransactionId' => $this->generate_unique_transaction_id($order_id),
+            'paymentMethod' => 'GPO_' . $this->api_key,
+            'paymentInfo' => array('phoneNumber' => $phone),
+            'notify' => array(
+                'name' => $order->get_billing_first_name() . ' ' . $order->get_billing_last_name(),
+                'telephone' => $order->get_billing_phone(),
+                'email' => $order->get_billing_email(),
+                'smsNotification' => false,
+                'emailNotification' => false
+            ),
+            'callback_url' => $this->get_option('webhook_enabled') === 'yes' ? home_url('/wc-api/wc_gateway_appypay') : null
+        );
 
         $args = array(
-            'headers' => array(
-                'Content-Type' => 'application/json',
-                'Accept' => 'application/json',
-                'Authorization' => 'Bearer ' . $access_token
-            ),
-            'timeout' => 100,
-            'body' => json_encode(array(
-                'amount' => $order->get_total(),
-                'currency' => 'AOA',
-                'description' => 'Pedido #' . $order_id,
-                'merchantTransactionId' => 'WC-' . $order_id,
-                'paymentMethod' => 'GPO_' . $this->api_key,
-                'paymentInfo' => array('phoneNumber' => $phone),
-                'notify' => array(
-                    'name' => $order->get_billing_first_name() . ' ' . $order->get_billing_last_name(),
-                    'telephone' => $order->get_billing_phone(),
-                    'email' => $order->get_billing_email(),
-                    'smsNotification' => false,
-                    'emailNotification' => false
-                ),
-                'callback_url' => $this->get_option('webhook_enabled') === 'yes' ? home_url('/wc-api/wc_gateway_appypay') : null
-            ))
+            'headers' => $headers,
+            'body' => json_encode($payload),
+            'timeout' => $webhook_enabled ? 180 : 60, 
+            'blocking' => true
         );
 
         $response = wp_remote_post($this->api_base_url . '/charges', $args);
@@ -241,26 +264,29 @@ class WC_Gateway_AppyPay extends WC_Payment_Gateway {
 
         $body = json_decode(wp_remote_retrieve_body($response), true);
 
-        if (isset($body['transactionId'])) {
-            $order->update_meta_data('_appypay_transaction_id', $body['transactionId']);
-            
-            // Se webhook desativado, verifica status imediatamente
-            if ($this->get_option('webhook_enabled') !== 'yes' && isset($body['status'])) {
-                $this->update_order_status($order, $body['status']);
-            } else {
-                $order->update_status('pending', __('Aguardando confirmação via MCX Express', 'woocommerce-gateway-appypay'));
-            }
-            
-            $order->save();
-            $woocommerce->cart->empty_cart();
+        if (isset($body['id'])) {
+            $order->update_meta_data('_appypay_transaction_id', $body['id']);
+            $order->set_transaction_id($body['id']);
+            $order->update_meta_data('_appypay_merchant_tx_id', $payload['merchantTransactionId']);
 
-            return array(
-                'result' => 'success',
-                'redirect' => $this->get_return_url($order)
-            );
+            if (isset($body['responseStatus']['status'])) {
+                $this->update_order_status($order, $body['responseStatus']['status']);
+            } else {
+                $order->update_status('wc-on-hold');
+            }
+
+            if ($body['responseStatus']['status'] == 'Success') {
+                $order->add_order_note(__('Pagamento confirmado via MCX Express', 'woocommerce-gateway-appypay'));
+                $order->save();
+                $woocommerce->cart->empty_cart();
+                return array(
+                    'result' => 'success',
+                    'redirect' => $this->get_return_url($order)
+                );
+            } 
         } else {
             $error_message = isset($body['message']) ? $body['message'] : __('Erro desconhecido ao processar pagamento.', 'woocommerce-gateway-appypay');
-            WC_AppyPay_Logger::log('Falha no pagamento: ' . $error_message);
+            WC_AppyPay_Logger::log('Falha no pagamento: ' . print_r($body, true));
             wc_add_notice($error_message, 'error');
             return false;
         }
@@ -270,52 +296,16 @@ class WC_Gateway_AppyPay extends WC_Payment_Gateway {
         switch ($status) {
             case 'Success':
                 $order->payment_complete();
+                $order->update_status('wc-processing');
                 $order->add_order_note(__('Pagamento confirmado via MCX Express', 'woocommerce-gateway-appypay'));
                 break;
             case 'Failed':
-                $order->update_status('failed', __('Pagamento recusado via MCX Express', 'woocommerce-gateway-appypay'));
+                $order->update_status('wc-failed');
+                $order->add_order_note(__('Pagamento recusado via MCX Express', 'woocommerce-gateway-appypay'));
                 break;
             default:
-                $order->update_status('pending', __('Aguardando confirmação via MCX Express', 'woocommerce-gateway-appypay'));
+                $order->update_status('wc-on-hold');
+                $order->add_order_note(__('Aguardando confirmação via MCX Express', 'woocommerce-gateway-appypay'));
         }
-    }
-
-    public function check_payment_status($order_id) {
-        $order = wc_get_order($order_id);
-        $transaction_id = $order->get_meta('_appypay_transaction_id');
-
-        if (empty($transaction_id)) {
-            return false;
-        }
-
-        $access_token = $this->get_access_token();
-        if (!$access_token) {
-            return false;
-        }
-
-        $args = array(
-            'headers' => array(
-                'Content-Type' => 'application/json',
-                'Accept' => 'application/json',
-                'Authorization' => 'Bearer ' . $access_token
-            ),
-            'timeout' => 30
-        );
-
-        $response = wp_remote_get($this->api_base_url . '/charges/' . $transaction_id, $args);
-
-        if (is_wp_error($response)) {
-            WC_AppyPay_Logger::log('Erro ao verificar status: ' . $response->get_error_message());
-            return false;
-        }
-
-        $body = json_decode(wp_remote_retrieve_body($response), true);
-
-        if (isset($body['payment']['status'])) {
-            $this->update_order_status($order, $body['payment']['status']);
-            return $body['payment']['status'] === 'Success';
-        }
-
-        return false;
     }
 }

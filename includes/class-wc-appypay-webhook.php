@@ -37,12 +37,13 @@ class WC_AppyPay_Webhook {
         }
 
         // Processamento do webhook
-        if (isset($data['transactionId']) && isset($data['status'])) {
+        if (isset($data['id']) && isset($data['responseStatus']['status'])) {
             $orders = wc_get_orders(array(
                 'meta_key' => '_appypay_transaction_id',
-                'meta_value' => sanitize_text_field($data['transactionId']),
+                'meta_value' => sanitize_text_field($data['id']),
                 'limit' => 1
             ));
+            
             
             if (!empty($orders)) {
                 $order = $orders[0];
